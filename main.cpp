@@ -4,6 +4,7 @@
 #include <SFML/System/Angle.hpp>
 #include <iostream>
 #include <string>
+#include <random>
 
 
 //////////////////////
@@ -11,10 +12,13 @@
 //////////////////////
 
 // window
-const char* window_title = "Tappa-05";
+const char* window_title = "Tappa-06";
 const unsigned window_width = 1200;
 const unsigned window_height = 680;
 const float max_frame_rate = 60;
+
+// Room
+sf::Vector2f roomPos;
 
 // Player
 const float player_speed = {400};
@@ -25,6 +29,9 @@ const float bullet_speed = {500};
 // Life
 const sf::Vector2f edge = {10.f, 10.f};
 const int numLife = 3;
+
+// Enemy
+const float enemy_speed = {200};
 
 struct Room{
     sf::Texture texture;
@@ -93,17 +100,42 @@ struct Round{
     sf::Vector2f size;
     int num;
 
-    Round();
-    void draw(sf::RenderWindow& window);
-    void update();
+    Round ();
+    void draw (sf::RenderWindow& window);
+    void update ();
+};
+
+struct Enemy{
+    sf::RectangleShape shape;
+    sf::Vector2f pos;
+    sf::Vector2f size;
+    sf::Texture textureSpider;
+    float speed;
+
+    Enemy ();
+    void draw (sf::RenderWindow& window);
+    sf::Vector2f randomSpawnPoint ();
+};
+
+
+struct Hub{
+    Life life;
+    Round round;
+    sf::Texture texture;
+    sf::Sprite sprite;
+    sf::Vector2f size;
+    sf::Vector2f pos;
+
+    Hub ();
+    void draw (sf::RenderWindow& window);
 };
 
 struct State{
     Room room;
+    Hub hub;
     Player player;
     Attack attack;
-    Life life;
-    Round text;
+    Enemy enemy;
     bool focus;
     bool pause;
 
@@ -122,7 +154,8 @@ struct State{
     bool pressed_bullet_up;
     bool pressed_bullet_down;
 
-    State() : room(), 
+
+    State() : room(),
               focus(false), 
               pause(true), 
               move_player_left(false), 
@@ -199,9 +232,30 @@ Life::Life (){
 }
 
 Round::Round () : text(font,"ROUND: ", 30){
-    text.setPosition({edge.x, edge.y + 50.f});
+    
+    text.setPosition({(window_width / 2.f) - 100, edge.y});
     text.setFillColor(sf::Color::White);
     num = 1;
+}
+
+Hub::Hub () : sprite(texture){
+    texture = sf::Texture("texture/floor/floorBlock02.png");
+    texture.setRepeated(true);
+    pos = {0,0};
+    size = {window_width, life.texture.getSize().y + (edge.y*2.f)};
+    sprite = sf::Sprite(texture);
+    sprite.setTextureRect(sf::IntRect({0, 0}, (sf::Vector2i)size));
+    roomPos = {0, size.y};
+}
+
+Enemy::Enemy () : shape(size){
+    textureSpider = sf::Texture ("texture/enemy/spider.png");
+    size = {textureSpider.getSize().x * 2.f, textureSpider.getSize().y * 2.f};
+    pos = randomSpawnPoint();
+    shape.setTexture(&textureSpider);
+    shape.setPosition(pos);
+    shape.setSize(size);
+    speed = enemy_speed;
 }
 
 //////////
@@ -210,6 +264,12 @@ Round::Round () : text(font,"ROUND: ", 30){
 
 void Room::draw (sf::RenderWindow& window){
     window.draw(sprite);
+}
+
+void Hub::draw (sf::RenderWindow& window){
+    window.draw(sprite);
+    life.draw(window);
+    round.draw(window);
 }
 
 void Player::draw (sf::RenderWindow& window){
@@ -268,15 +328,20 @@ void Round::draw (sf::RenderWindow& window){
     window.draw(finalText);
 }
 
+void Enemy::draw (sf::RenderWindow& window){
+    window.draw(shape);
+}
+
 void State::draw (sf::RenderWindow& window){
     room.draw(window);
+    hub.draw(window);
     if(!pause){
         attack.draw(window);
     }
-        player.draw(window);
-        life.draw(window);
-        text.draw(window);
+    player.draw(window);
+    enemy.draw(window);
 }
+
 
 ////////////
 // Update //
@@ -330,6 +395,26 @@ void Attack::update (float elapsed){
     
 }
 
+sf::Vector2f Enemy::randomSpawnPoint(){
+    std::random_device rd;
+    std::mt19937 gen(rd());
+
+    std::uniform_int_distribution<> distrX(1,2);
+    std::uniform_real_distribution<> distrY(roomPos.y, window_height - size.y);
+    
+    float X = 0.f;
+    if(distrX(gen) == 1){
+        X = 0.f;
+    }
+    else{
+        X = window_width;
+        shape.setScale({-1.f, 1.f});
+    }
+    float Y = distrY(gen);
+
+    return {X,Y};
+}
+
 void State::update (float elapsed){
     if(!pause){
         if(move_player_left){
@@ -371,8 +456,8 @@ void State::collision (){
     if(player.pos.x < 0.f){
         player.pos.x = 0.f;
     }
-    if(player.pos.y < 0.f){
-        player.pos.y = 0.f;
+    if(player.pos.y < hub.size.y){
+        player.pos.y = hub.size.y;
     }
     if(player.pos.x + player.size.x > window_width){
         player.pos.x = window_width - player.size.x;
