@@ -12,7 +12,7 @@
 //////////////////////
 
 // window
-const char* window_title = "Tappa-06";
+const char* window_title = "Tappa-07";
 const unsigned window_width = 1200;
 const unsigned window_height = 680;
 const float max_frame_rate = 60;
@@ -105,19 +105,6 @@ struct Round{
     void update ();
 };
 
-struct Enemy{
-    sf::RectangleShape shape;
-    sf::Vector2f pos;
-    sf::Vector2f size;
-    sf::Texture textureSpider;
-    float speed;
-
-    Enemy ();
-    void draw (sf::RenderWindow& window);
-    sf::Vector2f randomSpawnPoint ();
-};
-
-
 struct Hub{
     Life life;
     Round round;
@@ -128,6 +115,19 @@ struct Hub{
 
     Hub ();
     void draw (sf::RenderWindow& window);
+};
+
+struct Enemy{
+    sf::RectangleShape shape;
+    sf::Vector2f pos;
+    sf::Vector2f size;
+    sf::Texture textureSpider;
+    float speed;
+
+    Enemy ();
+    void draw (sf::RenderWindow& window);
+    sf::Vector2f randomSpawnPoint ();
+    void move (float elapsed, Player& player);
 };
 
 struct State{
@@ -250,7 +250,7 @@ Hub::Hub () : sprite(texture){
 
 Enemy::Enemy () : shape(size){
     textureSpider = sf::Texture ("texture/enemy/spider.png");
-    size = {textureSpider.getSize().x * 2.f, textureSpider.getSize().y * 2.f};
+    size = {textureSpider.getSize().x * 1.5f, textureSpider.getSize().y * 1.5f};
     pos = randomSpawnPoint();
     shape.setTexture(&textureSpider);
     shape.setPosition(pos);
@@ -329,6 +329,7 @@ void Round::draw (sf::RenderWindow& window){
 }
 
 void Enemy::draw (sf::RenderWindow& window){
+    shape.setPosition(pos);
     window.draw(shape);
 }
 
@@ -395,7 +396,7 @@ void Attack::update (float elapsed){
     
 }
 
-sf::Vector2f Enemy::randomSpawnPoint(){
+sf::Vector2f Enemy::randomSpawnPoint (){
     std::random_device rd;
     std::mt19937 gen(rd());
 
@@ -407,12 +408,59 @@ sf::Vector2f Enemy::randomSpawnPoint(){
         X = 0.f;
     }
     else{
-        X = window_width;
+        X = window_width - size.x;
         shape.setScale({-1.f, 1.f});
+        shape.setOrigin({size.x,0.f});
     }
     float Y = distrY(gen);
 
     return {X,Y};
+}
+
+void Enemy::move (float elapsed, Player& player){
+    sf::Vector2f enemyCenter = {pos.x + (size.x / 2.f), pos.y + (size.y / 2.f)};
+    sf::Vector2f playerCenter = {player.pos.x + (player.size.x / 2.f), player.pos.y + (player.size.y / 2.f)};
+
+    sf::Vector2f distance = {enemyCenter.x - playerCenter.x, enemyCenter.y - playerCenter.y};
+    float movement = (speed * elapsed);
+
+    if(std::abs(distance.x) > movement){
+        if(enemyCenter.x < playerCenter.x){
+            shape.setScale({1.f, 1.f});
+            shape.setOrigin({0.f,0.f});
+            pos.x += movement;
+        }
+        else if(enemyCenter.x > playerCenter.x){
+            shape.setScale({-1.f, 1.f});
+            shape.setOrigin({size.x,0.f});
+            pos.x -= movement;
+        }
+    }
+
+    if(std::abs(distance.y) > movement){
+        if(enemyCenter.y < playerCenter.y){
+            pos.y += movement;
+        }
+        else if(enemyCenter.y > playerCenter.y){
+            pos.y -= movement;
+        }
+    }
+    
+}
+
+void State::collision (){
+    if(player.pos.x < 0.f){
+        player.pos.x = 0.f;
+    }
+    if(player.pos.y < hub.size.y){
+        player.pos.y = hub.size.y;
+    }
+    if(player.pos.x + player.size.x > window_width){
+        player.pos.x = window_width - player.size.x;
+    }
+    if(player.pos.y + player.size.y > window_height){
+        player.pos.y = window_height - player.size.y;
+    }
 }
 
 void State::update (float elapsed){
@@ -447,23 +495,12 @@ void State::update (float elapsed){
         for(; num_bullet_down > 0; num_bullet_down--){
             attack.attack(3, {player.pos.x + (player.size.x / 2.f), player.pos.y + (player.size.y / 2.f)});
         }
+        
         attack.update(elapsed);
-        collision();
-    }
-}
 
-void State::collision (){
-    if(player.pos.x < 0.f){
-        player.pos.x = 0.f;
-    }
-    if(player.pos.y < hub.size.y){
-        player.pos.y = hub.size.y;
-    }
-    if(player.pos.x + player.size.x > window_width){
-        player.pos.x = window_width - player.size.x;
-    }
-    if(player.pos.y + player.size.y > window_height){
-        player.pos.y = window_height - player.size.y;
+        enemy.move(elapsed, player);
+
+        collision();
     }
 }
 
