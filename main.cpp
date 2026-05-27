@@ -15,7 +15,7 @@
 const sf::Font font{"resources/font/LowresPixel-Regular.otf"};
 
 // window
-const char* window_title = "Tappa-11";
+const char* window_title = "Tappa-12";
 const unsigned window_width = 1200;
 const unsigned window_height = 680;
 const float max_frame_rate = 60;
@@ -25,20 +25,21 @@ const float outLine = 5.f;
 
 // Room
 sf::Vector2f roomPos;
+enum class Direction { Left, Right, Up, Down };
 
 // Player
 const float player_speed = 400;
 
 // Bullet
-const float bullet_speed = 500;
+const float bullet_speed = 600;
 
 // Life
 const sf::Vector2f edge = {10.f, 10.f};
 const int numLife = 3;
 
 // Enemy
-const float enemy_speed = 200;
-const int numEmeny = 10;
+const float enemy_speed = 100;
+const int numEnemy = 10;
 
 struct Room{
     sf::Texture texture;
@@ -111,7 +112,7 @@ struct Player{
 
     Player ();
     void draw (sf::RenderWindow& window);
-    void setDirection (int direction);
+    void setDirection (Direction direction);
     void move_player_left (float elapsed);
     void move_player_right (float elapsed);
     void move_player_up (float elapsed);
@@ -127,17 +128,18 @@ struct Enemy{
     sf::Vector2f size;
     sf::Texture texture;
     float myspeed;
-    bool hitted;
+    int enemylife;
     
     bool isWaiting;
     float waitTimer;
     float WAIT_DURATION;
 
-    Enemy (float speed, sf::Vector2f posSpawn, sf::Texture& textureSelect);
+    Enemy (float speed, int life, sf::Vector2f posSpawn, sf::Texture& textureSelect);
     void draw (sf::RenderWindow& window);
     bool move (float elapsed, Player& player);
-    void hit(){ hitted = true; };
-    void startWaiting();
+    void hit (){ enemylife --; };
+    bool dead (){ return enemylife <= 0; };
+    void startWaiting ();
 };
 
 struct Bullet{
@@ -145,11 +147,11 @@ struct Bullet{
     sf::Vector2f pos;
     sf::Vector2f size;
     sf::Texture texture;
-    int direction;
+    Direction direction;
     float speed;
     bool inAction;
 
-    Bullet (int direction, sf::Vector2f posPlayer);
+    Bullet (Direction direction, sf::Vector2f posPlayer);
     void draw (sf::RenderWindow& window);
     void move_bullet (float elapsed);
     bool hit (Enemy& enemy);
@@ -160,7 +162,7 @@ struct Attack{
 
     Attack (){};
     void draw (sf::RenderWindow& window);
-    void attack (int direction, sf::Vector2f posPlayer);
+    void attack (Direction direction, sf::Vector2f posPlayer);
     void update (float elapsed);
     void hit (Enemy& enemy);
     void collision (Hub Hub);
@@ -174,7 +176,9 @@ struct Wave {
     sf::Texture textureSpider;
     sf::Texture textureSnake;
     float spawnTimer;
-    int num;
+    int totalEnemy;
+    int enemyAlive;
+    int spawnedCount;
     float speed;
 
     Wave ();
@@ -183,6 +187,7 @@ struct Wave {
     sf::Texture& randomTexture ();
     sf::Vector2f randomSpawnPoint (sf::Texture texture);
     void cleanUp ();
+    void update (float elapsed);
 
     void reset (int numRound);
 };
@@ -293,7 +298,7 @@ Player::Player (){
     speed = player_speed;
 }
 
-Bullet::Bullet (int direction, sf::Vector2f playerCenter) : shape(size){
+Bullet::Bullet (Direction direction, sf::Vector2f playerCenter) : shape(size){
     this->direction = direction;
     inAction = true;
     
@@ -302,20 +307,20 @@ Bullet::Bullet (int direction, sf::Vector2f playerCenter) : shape(size){
 
     shape.setTexture(&texture);
     pos = {playerCenter.x, playerCenter.y};
-    if(direction == 0){
+    if(direction == Direction::Left){
         shape.setScale({-1.f,1.f});
         shape.setOrigin({0.f, size.y/2.f});
     }
-    else if(direction == 1){
+    else if(direction == Direction::Right){
         shape.setOrigin({0.f,size.y/2.f});
     }
-    else if(direction == 2){
+    else if(direction == Direction::Up){
         shape.rotate(sf::degrees(90.f));
         shape.setScale({-1.f,1.f});
         shape.setOrigin({0.f, size.y/2.f});
         
     }
-    else if(direction == 3){
+    else if(direction == Direction::Down){
         shape.rotate(sf::degrees(90.f));
         shape.setScale({1.f,1.f});
         shape.setOrigin({0.f, size.y/2.f});
@@ -355,8 +360,8 @@ Hub::Hub () : shape(size){
     size.y += outLine;
 }
 
-Enemy::Enemy (float speed, sf::Vector2f posSpawn, sf::Texture& textureSelect) : shape(size){
-    hitted = false;
+Enemy::Enemy (float speed, int life, sf::Vector2f posSpawn, sf::Texture& textureSelect) : shape(size){
+    enemylife = life;
     isWaiting = false;
     waitTimer = 0.f;
     WAIT_DURATION = 0.5f;
@@ -377,31 +382,12 @@ Enemy::Enemy (float speed, sf::Vector2f posSpawn, sf::Texture& textureSelect) : 
 Wave::Wave (){
     textureSnake = sf::Texture("texture/enemy/snake.png");
     textureSpider = sf::Texture("texture/enemy/spider.png");
-    num = numEmeny;
-    spawnTimer = 1.f;
-    enemies.reserve(num); 
+    enemyAlive = numEnemy;
+    spawnedCount = 0;
+    totalEnemy = numEnemy;
+    spawnTimer = 0.f;
+    enemies.reserve(enemyAlive); 
     speed = enemy_speed;
-
-    int i = 0;
-    while( i < num){
-        sf::Texture& newEmenyTexture = randomTexture();
-        sf::RectangleShape newEnemy ((sf::Vector2f) newEmenyTexture.getSize());
-        sf::Vector2f newEmenyPos = randomSpawnPoint(newEmenyTexture);
-        newEnemy.setPosition(newEmenyPos);
-        bool conflict = false;
-        sf::FloatRect boundsA = newEnemy.getGlobalBounds();
-        for(auto& enemy : enemies){
-            sf::FloatRect boundsB = enemy.shape.getGlobalBounds();
-            if(boundsA.findIntersection(boundsB)){
-                conflict = true;
-                break;
-            }
-        }
-        if(!conflict){
-            enemies.emplace_back(speed, newEmenyPos, newEmenyTexture);
-            i++;
-        }
-    }
 }
 
 //////////
@@ -530,11 +516,11 @@ void Hub::nextRound (){
     round.num ++;
 }
 
-void Player::setDirection(int direction){
-    if(direction == 0) lastTexture = textureLeft;
-    if(direction == 1) lastTexture = textureRight;
-    if(direction == 2) lastTexture = textureBack;
-    if(direction == 3) lastTexture = textureFront;
+void Player::setDirection(Direction direction){
+    if(direction == Direction::Left) lastTexture = textureLeft;
+    if(direction == Direction::Right) lastTexture = textureRight;
+    if(direction == Direction::Up) lastTexture = textureBack;
+    if(direction == Direction::Down) lastTexture = textureFront;
 }
 
 void Player::move_player_left (float elapsed){
@@ -560,20 +546,20 @@ void Player::reset (int numRound){
     float player_px = ((float) window_width / 2.0) - (size.x / 2.0);
     float player_py = ((float) window_height/2.0) - size.y;
     pos = {player_px, player_py};
-    speed = player_speed + (50 * numRound);
+    speed = player_speed + (20 * numRound);
 }
 
 void Bullet::move_bullet (float elapsed){
-    if(direction == 0){
+    if(direction == Direction::Left){
         pos.x -= speed * elapsed;
     }
-    else if(direction == 1){
+    else if(direction == Direction::Right){
         pos.x += speed * elapsed;
     }
-    else if(direction == 2){
+    else if(direction == Direction::Up){
         pos.y -= speed * elapsed;
     }
-    else if(direction == 3){
+    else if(direction == Direction::Down){
         pos.y += speed * elapsed;
     }
 }
@@ -588,7 +574,7 @@ bool Bullet::hit (Enemy& enemy) {
     return false;
 }
 
-void Attack::attack (int direction, sf::Vector2f posPlayer){
+void Attack::attack (Direction direction, sf::Vector2f posPlayer){
     bullets.push_back(Bullet(direction, posPlayer));
 }
 
@@ -698,17 +684,44 @@ sf::Vector2f Wave::randomSpawnPoint (sf::Texture texture){
     std::random_device rd;
     std::mt19937 gen(rd());
 
-    std::uniform_int_distribution<> distrX(1,2);
-    std::uniform_real_distribution<> distrY(roomPos.y, window_height - texture.getSize().y);
-    
+    std::uniform_int_distribution<> distr(1, 2);
     float X = 0.f;
-    if(distrX(gen) == 1){
-        X = 0.f;
+    float Y = 0.f;
+    if(distr(gen) == 2){
+        std::uniform_int_distribution<> distrX(0.f, window_width - texture.getSize().x);
+        X = distrX(gen);
+        if(X == 0.f  || X == window_width  - (texture.getSize().x)){
+            std::uniform_real_distribution<> distrY(roomPos.y, window_height - texture.getSize().y);
+            Y = distrY(gen);
+        }
+        else{
+            std::uniform_real_distribution<> distrY(1,2);
+            if(distrY(gen) == 1){
+                Y = roomPos.y - texture.getSize().y;
+            }
+            else{
+                Y = window_height;
+            }
+        }
     }
     else{
-        X = window_width - texture.getSize().x;
+        
+        std::uniform_real_distribution<> distrY(roomPos.y, window_height - texture.getSize().y);
+        Y = distrY(gen);
+        if(Y == roomPos.y || Y == window_height - texture.getSize().y){
+            std::uniform_int_distribution<> distrX(0.f, window_width - texture.getSize().x);
+            X = distrX(gen);
+        }
+        else{
+            std::uniform_real_distribution<> distrX(1,2);
+            if(distrX(gen) == 1){
+                X = 0.f;
+            }
+            else{
+                X = window_width - texture.getSize().x;
+            }
+        }
     }
-    float Y = distrY(gen);
 
     return {X,Y};
 }
@@ -727,6 +740,37 @@ sf::Texture& Wave::randomTexture (){
     }
 }
 
+void Wave::update (float elapsed) {
+    spawnTimer += elapsed;
+    if (spawnedCount < totalEnemy) {
+        if (spawnTimer >= 1.0f) {
+            sf::Texture& newEmenyTexture = randomTexture();
+            sf::RectangleShape newEnemy((sf::Vector2f)newEmenyTexture.getSize());
+            sf::Vector2f newEmenyPos = randomSpawnPoint(newEmenyTexture);
+            newEnemy.setPosition(newEmenyPos);
+            
+            bool conflict = false;
+            sf::FloatRect boundsA = newEnemy.getGlobalBounds();
+            
+            for(auto& enemy : enemies){
+                sf::FloatRect boundsB = enemy.shape.getGlobalBounds();
+                if(boundsA.findIntersection(boundsB)){
+                    conflict = true;
+                    break;
+                }
+            }
+            
+            if(!conflict){
+                if(newEmenyTexture.getSize() == textureSpider.getSize())
+                    enemies.emplace_back(speed, 2, newEmenyPos, newEmenyTexture);
+                else
+                    enemies.emplace_back(speed * 1.5f, 1, newEmenyPos, newEmenyTexture);
+                spawnedCount++;
+                spawnTimer = 0.f;
+            }
+        }
+    }
+}
 
 void Wave::collision (Hub hub) {
     for (size_t i = 0; i < enemies.size(); ++i) {
@@ -777,9 +821,9 @@ void Wave::collision (Hub hub) {
 
 void Wave::cleanUp() {
     for(size_t i = 0; i < enemies.size(); ){
-        if(enemies.at(i).hitted){
+        if(enemies.at(i).dead()){
             enemies.erase(enemies.begin() + i);
-            num --;
+            enemyAlive --;
         }
         else i++;
     }
@@ -787,31 +831,12 @@ void Wave::cleanUp() {
 
 void Wave::reset (int numRound){
     enemies.clear();
-    num = numEmeny + (1 * numRound);
-    spawnTimer = 1.f;
-    enemies.reserve(num);
-    speed = enemy_speed + (50 * numRound);
-
-    int i = 0;
-    while( i < num){
-        sf::Texture& newEmenyTexture = randomTexture();
-        sf::RectangleShape newEnemy ((sf::Vector2f) newEmenyTexture.getSize());
-        sf::Vector2f newEmenyPos = randomSpawnPoint(newEmenyTexture);
-        newEnemy.setPosition(newEmenyPos);
-        bool conflict = false;
-        sf::FloatRect boundsA = newEnemy.getGlobalBounds();
-        for(auto& enemy : enemies){
-            sf::FloatRect boundsB = enemy.shape.getGlobalBounds();
-            if(boundsA.findIntersection(boundsB)){
-                conflict = true;
-                break;
-            }
-        }
-        if(!conflict){
-            enemies.emplace_back(speed, newEmenyPos, newEmenyTexture);
-            i++;
-        }
-    }
+    enemyAlive = numEnemy + (1 * numRound);;
+    spawnedCount = 0;
+    totalEnemy = enemyAlive;
+    spawnTimer = 0.f;
+    enemies.reserve(enemyAlive); 
+    speed = enemy_speed + (20 * numRound);
 }
 
 void State::collision (){
@@ -873,35 +898,36 @@ void State::update (float elapsed){
 
         if(move_player_left){
             player.move_player_left(elapsed);
-            player.setDirection(0);
+            player.setDirection(Direction::Left);
         }
         if(move_player_right){
             player.move_player_right(elapsed);
-            player.setDirection(1);
+            player.setDirection(Direction::Right);
         }
         if(move_player_up){
             player.move_player_up(elapsed);
-            player.setDirection(2);
+            player.setDirection(Direction::Up);
         }
         if(move_player_down){
             player.move_player_down(elapsed);
-            player.setDirection(3);
+            player.setDirection(Direction::Down);
         }
         
         // Player attact
         for(; num_bullet_left > 0; num_bullet_left--){
-            attack.attack(0, {player.pos.x + (player.size.x / 2.f), player.pos.y + (player.size.y / 2.f)});
+            attack.attack(Direction::Left, {player.pos.x + (player.size.x / 2.f), player.pos.y + (player.size.y / 2.f)});
         }
         for(; num_bullet_right > 0; num_bullet_right--){
-            attack.attack(1, {player.pos.x + (player.size.x / 2.f), player.pos.y + (player.size.y / 2.f)});
+            attack.attack(Direction::Right, {player.pos.x + (player.size.x / 2.f), player.pos.y + (player.size.y / 2.f)});
         }
         for(; num_bullet_up > 0; num_bullet_up--){
-            attack.attack(2, {player.pos.x + (player.size.x / 2.f), player.pos.y + (player.size.y / 2.f)});
+            attack.attack(Direction::Up, {player.pos.x + (player.size.x / 2.f), player.pos.y + (player.size.y / 2.f)});
         }
         for(; num_bullet_down > 0; num_bullet_down--){
-            attack.attack(3, {player.pos.x + (player.size.x / 2.f), player.pos.y + (player.size.y / 2.f)});
+            attack.attack(Direction::Down, {player.pos.x + (player.size.x / 2.f), player.pos.y + (player.size.y / 2.f)});
         }
         
+        wave.update(elapsed);
         attack.update(elapsed);
 
         for(auto& enemy : wave.enemies){
@@ -917,7 +943,7 @@ void State::update (float elapsed){
             restart(false);
         }
 
-        if(wave.num <= 0){
+        if(wave.enemyAlive <= 0){
             restart(true);
         }
     }
@@ -951,6 +977,11 @@ void handle (const sf::Event::KeyPressed& key, State& state)
 
     switch (key.scancode) {
     case sf::Keyboard::Scan::Enter:
+        state.pause = !state.pause;
+        state.game_over = false;
+        return;
+
+    case sf::Keyboard::Scan::Space:
         state.pause = !state.pause;
         state.game_over = false;
         return;
