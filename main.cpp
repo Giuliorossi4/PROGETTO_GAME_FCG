@@ -3,6 +3,7 @@
 #include <SFML/System/Clock.hpp>
 #include <SFML/System/Angle.hpp>
 #include <iostream>
+#include <string>
 
 
 //////////////////////
@@ -10,7 +11,7 @@
 //////////////////////
 
 // window
-const char* window_title = "Tappa-04";
+const char* window_title = "Tappa-05";
 const unsigned window_width = 1200;
 const unsigned window_height = 680;
 const float max_frame_rate = 60;
@@ -20,6 +21,10 @@ const float player_speed = {400};
 
 // Bullet
 const float bullet_speed = {500};
+
+// Life
+const sf::Vector2f edge = {10.f, 10.f};
+const int numLife = 3;
 
 struct Room{
     sf::Texture texture;
@@ -56,7 +61,7 @@ struct Bullet{
     float speed;
     bool inAction;
 
-    Bullet(int direction, sf::Vector2f posPlayer);
+    Bullet (int direction, sf::Vector2f posPlayer);
     void draw (sf::RenderWindow& window);
     void move_bullet (float elapsed);
 };
@@ -64,16 +69,41 @@ struct Bullet{
 struct Attack{
     std::vector<Bullet> bullets;
 
-    Attack(){};
+    Attack (){};
     void draw (sf::RenderWindow& window);
-    void attack(int direction, sf::Vector2f posPlayer);
-    void update(float elapsed);
+    void attack (int direction, sf::Vector2f posPlayer);
+    void update (float elapsed);
+};
+
+struct Life{
+    sf::Texture texture;
+    sf::Vector2f pos;
+    sf::Vector2f size;
+    int life;
+
+    Life ();
+    void draw (sf::RenderWindow& window);
+    void update ();
+};
+
+struct Round{
+    const sf::Font font{"resources/font/LowresPixel-Regular.otf"};
+    sf::Text text;
+    sf::Vector2f pos;
+    sf::Vector2f size;
+    int num;
+
+    Round();
+    void draw(sf::RenderWindow& window);
+    void update();
 };
 
 struct State{
     Room room;
     Player player;
     Attack attack;
+    Life life;
+    Round text;
     bool focus;
     bool pause;
 
@@ -82,10 +112,15 @@ struct State{
     bool move_player_up;
     bool move_player_down;
     
-    int move_bullet_left;
-    int move_bullet_right;
-    int move_bullet_up;
-    int move_bullet_down;
+    int num_bullet_left;
+    int num_bullet_right;
+    int num_bullet_up;
+    int num_bullet_down;
+
+    bool pressed_bullet_left;
+    bool pressed_bullet_right;
+    bool pressed_bullet_up;
+    bool pressed_bullet_down;
 
     State() : room(), 
               focus(false), 
@@ -94,15 +129,22 @@ struct State{
               move_player_right(false), 
               move_player_up(false), 
               move_player_down(false),
-              move_bullet_left(0), 
-              move_bullet_right(0), 
-              move_bullet_up(0), 
-              move_bullet_down(0) {}
+              num_bullet_left(0), 
+              num_bullet_right(0), 
+              num_bullet_up(0), 
+              num_bullet_down(0),
+              pressed_bullet_left(false),
+              pressed_bullet_right(false),
+              pressed_bullet_up(false),
+              pressed_bullet_down(false) {}
     void draw (sf::RenderWindow& window);
-    void update(float elapsed);
-    void collision();
+    void update (float elapsed);
+    void collision ();
 };
 
+/////////////////
+// Constructor //
+/////////////////
 
 Room::Room () : sprite(texture){
     texture = sf::Texture("texture/floor/floorBlock01.png");
@@ -147,6 +189,19 @@ Bullet::Bullet (int direction, sf::Vector2f posPlayer)
         pos = {posPlayer.x + (size.x), posPlayer.y};
     }
     speed = bullet_speed;
+}
+
+Life::Life (){
+    life = numLife;
+    texture = sf::Texture("texture/life/heart.png");
+    pos = edge;
+    size = {(texture.getSize().x * life) + (edge.x * (life - 1)), (float)texture.getSize().y};
+}
+
+Round::Round () : text(font,"ROUND: ", 30){
+    text.setPosition({edge.x, edge.y + 50.f});
+    text.setFillColor(sf::Color::White);
+    num = 1;
 }
 
 //////////
@@ -196,12 +251,31 @@ void Attack::draw (sf::RenderWindow& window){
     }
 }
 
+void Life::draw (sf::RenderWindow& window){
+    sf::Vector2f posHeart = pos;
+    sf::Sprite sprite(texture);
+    for(int i = 0; i < life; i++){
+        sprite.setPosition(posHeart);
+        window.draw(sprite);
+        posHeart.x += texture.getSize().x + (edge.x / 2.f);
+    }
+}
+
+
+void Round::draw (sf::RenderWindow& window){
+    sf::Text finalText = text;
+    finalText.setString(text.getString() + "\t" + std::to_string(num));
+    window.draw(finalText);
+}
+
 void State::draw (sf::RenderWindow& window){
     room.draw(window);
     if(!pause){
         attack.draw(window);
     }
         player.draw(window);
+        life.draw(window);
+        text.draw(window);
 }
 
 ////////////
@@ -276,16 +350,16 @@ void State::update (float elapsed){
         }
         
         // Player attact
-        for(move_bullet_left; move_bullet_left > 0; move_bullet_left--){
+        for(; num_bullet_left > 0; num_bullet_left--){
             attack.attack(0, {player.pos.x + (player.size.x / 2.f), player.pos.y + (player.size.y / 2.f)});
         }
-        for(move_bullet_right; move_bullet_right > 0; move_bullet_right--){
+        for(; num_bullet_right > 0; num_bullet_right--){
             attack.attack(1, {player.pos.x + (player.size.x / 2.f), player.pos.y + (player.size.y / 2.f)});
         }
-        for(move_bullet_up; move_bullet_up > 0; move_bullet_up--){
+        for(; num_bullet_up > 0; num_bullet_up--){
             attack.attack(2, {player.pos.x + (player.size.x / 2.f), player.pos.y + (player.size.y / 2.f)});
         }
-        for(move_bullet_down; move_bullet_down > 0; move_bullet_down--){
+        for(; num_bullet_down > 0; num_bullet_down--){
             attack.attack(3, {player.pos.x + (player.size.x / 2.f), player.pos.y + (player.size.y / 2.f)});
         }
         attack.update(elapsed);
@@ -352,16 +426,28 @@ void handle (const sf::Event::KeyPressed& key, State& state)
     
     // Player attack (bullet movement)
     case sf::Keyboard::Scancode::Left:
-        state.move_bullet_left ++;
+        if(!state.pressed_bullet_left){
+            state.num_bullet_left ++;
+            state.pressed_bullet_left = true;
+        }
         return;
     case sf::Keyboard::Scancode::Right:
-        state.move_bullet_right ++;
+        if(!state.pressed_bullet_right){
+            state.num_bullet_right ++;
+            state.pressed_bullet_right = true;
+        }
         return;
     case sf::Keyboard::Scancode::Up:
-        state.move_bullet_up ++;
+        if(!state.pressed_bullet_up){
+            state.num_bullet_up ++;
+            state.pressed_bullet_up = true;
+        }
         return;
     case sf::Keyboard::Scancode::Down:
-        state.move_bullet_down ++;
+        if(!state.pressed_bullet_down){
+            state.num_bullet_down ++;
+            state.pressed_bullet_down = true;
+        }
         return;
     
     default:
@@ -390,6 +476,20 @@ void handle (const sf::Event::KeyReleased& key, State& state)
         state.move_player_down = false;
         return;
     
+    // Player attack (bullet movement)
+    case sf::Keyboard::Scancode::Left:
+        state.pressed_bullet_left = false;
+        return;
+    case sf::Keyboard::Scancode::Right:
+        state.pressed_bullet_right = false;
+        return;
+    case sf::Keyboard::Scancode::Up:
+        state.pressed_bullet_up = false;
+        return;
+    case sf::Keyboard::Scancode::Down:
+        state.pressed_bullet_down = false;
+        return;
+
     default:
         return;
     }
