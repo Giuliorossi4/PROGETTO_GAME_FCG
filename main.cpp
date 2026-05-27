@@ -12,7 +12,7 @@
 //////////////////////
 
 // window
-const char* window_title = "Tappa-08";
+const char* window_title = "Tappa-09";
 const unsigned window_width = 1200;
 const unsigned window_height = 680;
 const float max_frame_rate = 60;
@@ -85,6 +85,7 @@ struct Player{
     sf::Texture textureLeft;
     sf::Texture textureRight;
     float speed;
+    bool hit;
 
     Player ();
     void draw (sf::RenderWindow& window);
@@ -93,6 +94,7 @@ struct Player{
     void move_player_right (float elapsed);
     void move_player_up (float elapsed);
     void move_player_down (float elapsed);
+    void hitted (){ hit = true; }
 };
 
 struct Enemy{
@@ -102,13 +104,17 @@ struct Enemy{
     sf::Texture textureSpider;
     float speed;
     bool hitted;
+    
+    bool isWaiting;          
+    float waitTimer;
+    float WAIT_DURATION;         
 
     Enemy ();
     void draw (sf::RenderWindow& window);
     sf::Vector2f randomSpawnPoint ();
-    void move (float elapsed, Player& player);
-
+    bool move (float elapsed, Player& player);
     void hit(){ hitted = true; };
+    void startWaiting();
 };
 
 struct Bullet{
@@ -193,8 +199,8 @@ Room::Room () : sprite(texture){
     sprite.setTextureRect(sf::IntRect({0, 0}, {static_cast<int>(window_width), static_cast<int>(window_height)}));
 }
 
-Player::Player ()
-{
+Player::Player (){
+    hit = false;
     textureFront = sf::Texture ("texture/front/front.png");
     textureBack = sf::Texture ("texture/back/back.png");
     textureLeft = sf::Texture ("texture/left/left.png");
@@ -205,7 +211,6 @@ Player::Player ()
     float player_px = ((float) window_width / 2.0) - (size.x / 2.0);
     float player_py = ((float) window_height/2.0) - size.y;
     pos = {player_px, player_py};
-
     speed = player_speed;
 }
 
@@ -269,6 +274,9 @@ Hub::Hub () : sprite(texture){
 
 Enemy::Enemy () : shape(size){
     hitted = false;
+    isWaiting = false;
+    waitTimer = 0.f;
+    WAIT_DURATION = 0.5f;
     textureSpider = sf::Texture ("texture/enemy/spider.png");
     size = {textureSpider.getSize().x * 1.5f, textureSpider.getSize().y * 1.5f};
     pos = randomSpawnPoint();
@@ -294,10 +302,12 @@ void Hub::draw (sf::RenderWindow& window){
 
 void Player::draw (sf::RenderWindow& window){
     size = (sf::Vector2f)lastTexture.getSize();
-    sf::RectangleShape p (size);
-    p.setTexture(&lastTexture);
-    p.setPosition(pos);
-    window.draw(p);
+    sf::RectangleShape shape(size);
+    shape.setPosition(pos);
+    shape.setTexture(&lastTexture);
+    window.draw(shape);
+
+    hit = false;
 }
 
 void Bullet::draw (sf::RenderWindow& window){
@@ -465,12 +475,27 @@ sf::Vector2f Enemy::randomSpawnPoint (){
     return {X,Y};
 }
 
-void Enemy::move (float elapsed, Player& player){
+void Enemy::startWaiting() {
+    isWaiting = true;
+    waitTimer = 0.f;
+}
+
+bool Enemy::move (float elapsed, Player& player){
     sf::Vector2f enemyCenter = {pos.x + (size.x / 2.f), pos.y + (size.y / 2.f)};
     sf::Vector2f playerCenter = {player.pos.x + (player.size.x / 2.f), player.pos.y + (player.size.y / 2.f)};
 
     sf::Vector2f distance = {enemyCenter.x - playerCenter.x, enemyCenter.y - playerCenter.y};
     float movement = (speed * elapsed);
+
+    if (isWaiting) {
+        waitTimer += elapsed;
+        
+        if (waitTimer >= WAIT_DURATION) {
+            isWaiting = false;
+        }
+        
+        return false;
+    }
 
     if(std::abs(distance.x) > movement){
         if(enemyCenter.x < playerCenter.x){
@@ -493,6 +518,18 @@ void Enemy::move (float elapsed, Player& player){
             pos.y -= movement;
         }
     }
+
+    sf::FloatRect bulletBounds = shape.getGlobalBounds();
+    sf::RectangleShape playerShape(player.size);
+    playerShape.setPosition(player.pos);
+    sf::FloatRect enemyBounds = playerShape.getGlobalBounds();
+
+    if (bulletBounds.findIntersection(enemyBounds)) {
+        player.hitted();
+        return true;
+    }
+
+    return false;
 }
 
 void State::collision (){
@@ -548,8 +585,10 @@ void State::update (float elapsed){
         
         attack.update(elapsed);
 
-        // test se funziona da fermo
-        //enemy.move(elapsed, player);
+        if(enemy.move(elapsed, player)){
+            hub.life.life -= 1;
+            enemy.startWaiting();
+        }
 
         collision();
     }
@@ -623,7 +662,6 @@ void handle (const sf::Event::KeyPressed& key, State& state)
         }
         return;
     
-    // test
     case sf::Keyboard::Scan::C:
         state.enemy.hit();
         return;
