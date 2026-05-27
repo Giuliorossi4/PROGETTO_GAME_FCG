@@ -11,11 +11,17 @@
 // Initial defaults //
 //////////////////////
 
+// Font
+const sf::Font font{"resources/font/LowresPixel-Regular.otf"};
+
 // window
-const char* window_title = "Tappa-10";
+const char* window_title = "Tappa-11";
 const unsigned window_width = 1200;
 const unsigned window_height = 680;
 const float max_frame_rate = 60;
+
+// Menu
+const float outLine = 5.f;
 
 // Room
 sf::Vector2f roomPos;
@@ -42,6 +48,20 @@ struct Room{
     void draw (sf::RenderWindow& window);
 };
 
+struct Menu {
+    sf::RectangleShape box;
+    sf::RectangleShape button;
+    sf::Text titleText;
+    sf::Text buttonText;
+    sf::Texture texture;
+    sf::Vector2f boxSize;
+    sf::Vector2f buttonSize;
+
+    Menu();
+    void update (bool isGameOver);
+    void draw (sf::RenderWindow& window);
+};
+
 struct Life{
     sf::Texture texture;
     sf::Texture texture2;
@@ -56,7 +76,6 @@ struct Life{
 };
 
 struct Round{
-    const sf::Font font{"resources/font/LowresPixel-Regular.otf"};
     sf::Text text;
     sf::Vector2f pos;
     sf::Vector2f size;
@@ -70,7 +89,7 @@ struct Hub{
     Life life;
     Round round;
     sf::Texture texture;
-    sf::Sprite sprite;
+    sf::RectangleShape shape;
     sf::Vector2f size;
     sf::Vector2f pos;
 
@@ -170,12 +189,14 @@ struct Wave {
 
 struct State{
     Room room;
+    Menu menu;
     Hub hub;
     Player player;
     Attack attack;
     Wave wave;
     bool focus;
     bool pause;
+    bool game_over;
 
     bool move_player_left;
     bool move_player_right;
@@ -195,7 +216,8 @@ struct State{
 
     State() : room(),
               focus(false), 
-              pause(true), 
+              pause(true),
+              game_over(false),
               move_player_left(false), 
               move_player_right(false), 
               move_player_up(false), 
@@ -225,6 +247,36 @@ Room::Room () : sprite(texture){
     sprite.setTextureRect(sf::IntRect({0, 0}, {static_cast<int>(window_width), static_cast<int>(window_height)}));
 }
 
+Menu::Menu() : box(boxSize), button(buttonSize), titleText(font, "", 10), buttonText(font,"", 10) {
+    texture = sf::Texture("texture/floor/floorBlock02.png");
+    texture.setRepeated(true);
+    
+    boxSize = {window_width / 1.5f, window_height / 1.5f};
+    box.setSize(boxSize);
+    box.setTexture(&texture);
+    box.setTextureRect(sf::IntRect({0, 0}, {static_cast<int>(boxSize.x), static_cast<int>(boxSize.y)}));
+    box.setPosition({(window_width - boxSize.x) / 2.f, (window_height - boxSize.y) / 2.f});
+    box.setOutlineThickness(5.f);
+    box.setOutlineColor(sf::Color::Black);
+
+    buttonSize = {200.f, 60.f};
+    button.setSize(buttonSize);
+    button.setFillColor(sf::Color(50, 50, 50));
+    button.setOutlineThickness(3.f);
+    button.setOutlineColor(sf::Color::White);
+    button.setPosition({
+        box.getPosition().x + (boxSize.x - buttonSize.x) / 2.f,
+        box.getPosition().y + (boxSize.y * 0.65f)
+    });
+
+    titleText.setFont(font);
+    titleText.setCharacterSize(50);
+    titleText.setFillColor(sf::Color::White);
+
+    buttonText.setFont(font);
+    buttonText.setCharacterSize(25);
+    buttonText.setFillColor(sf::Color::White);
+}
 
 Player::Player (){
     hit = false;
@@ -289,14 +341,18 @@ Round::Round () : text(font,"ROUND: ", 30){
     num = 1;
 }
 
-Hub::Hub () : sprite(texture){
+Hub::Hub () : shape(size){
     texture = sf::Texture("texture/floor/floorBlock02.png");
     texture.setRepeated(true);
     pos = {0,0};
     size = {window_width, life.texture.getSize().y + (edge.y*2.f)};
-    sprite = sf::Sprite(texture);
-    sprite.setTextureRect(sf::IntRect({0, 0}, (sf::Vector2i)size));
-    roomPos = {0, size.y};
+    shape.setSize(size);
+    shape.setTexture(&texture);
+    shape.setTextureRect(sf::IntRect({0, 0}, (sf::Vector2i)size));
+    roomPos = {0, size.y + outLine};
+    shape.setOutlineThickness(outLine);
+    shape.setOutlineColor(sf::Color::Black);
+    size.y += outLine;
 }
 
 Enemy::Enemy (float speed, sf::Vector2f posSpawn, sf::Texture& textureSelect) : shape(size){
@@ -356,8 +412,15 @@ void Room::draw (sf::RenderWindow& window){
     window.draw(sprite);
 }
 
+void Menu::draw(sf::RenderWindow& window) {
+    window.draw(box);
+    window.draw(button);
+    window.draw(titleText);
+    window.draw(buttonText);
+}
+
 void Hub::draw (sf::RenderWindow& window){
-    window.draw(sprite);
+    window.draw(shape);
     life.draw(window);
     round.draw(window);
 }
@@ -422,15 +485,42 @@ void State::draw (sf::RenderWindow& window){
     room.draw(window);
     if(!pause){
         attack.draw(window);
+        player.draw(window);
+        wave.draw(window);
     }
-    player.draw(window);
-    wave.draw(window);
+    else{
+        if(hub.round.num == 1) menu.draw(window);
+        else{
+            player.draw(window);
+            wave.draw(window);
+        }
+    }
     hub.draw(window);
 }
 
 ////////////
 // Update //
 ////////////
+
+void Menu::update (bool isGameOver) {
+    if (!isGameOver) {
+        titleText.setString("DUNGEON CLEANSER");
+        buttonText.setString("START");
+    } else {
+        titleText.setString("GAME OVER");
+        buttonText.setString("RESTART");
+    }
+
+    buttonText.setPosition(sf::Vector2f(
+        button.getPosition().x + (button.getSize().x - buttonText.getGlobalBounds().size.x) / 2.f,
+        button.getPosition().y + (button.getSize().y - buttonText.getGlobalBounds().size.y) / 1.8f
+    ));
+
+    titleText.setPosition(sf::Vector2f(
+        box.getPosition().x + (boxSize.x - titleText.getGlobalBounds().size.x) / 2.f,
+        box.getPosition().y + (boxSize.y * 0.2f)
+    ));
+}
 
 void Life::reset (){
     life = numLife;
@@ -649,7 +739,6 @@ void Wave::collision (Hub hub) {
 
             
             auto intersectionOpt = boundsA.findIntersection(boundsB);
-            
             if (intersectionOpt) {
                 sf::FloatRect inter = *intersectionOpt;
 
@@ -761,6 +850,7 @@ void State::restart (bool nextRound)
         hub.life.reset();
         wave.reset(0);
         hub.round.num = 1;
+        game_over = true;
     }
     attack.reset();
     pause = true;
@@ -780,6 +870,7 @@ void State::restart (bool nextRound)
 
 void State::update (float elapsed){
     if(!pause){
+
         if(move_player_left){
             player.move_player_left(elapsed);
             player.setDirection(0);
@@ -830,6 +921,9 @@ void State::update (float elapsed){
             restart(true);
         }
     }
+    else {
+        menu.update(game_over);
+    }
 }
 
 ////////////
@@ -858,6 +952,7 @@ void handle (const sf::Event::KeyPressed& key, State& state)
     switch (key.scancode) {
     case sf::Keyboard::Scan::Enter:
         state.pause = !state.pause;
+        state.game_over = false;
         return;
 
     // Player movement
@@ -942,6 +1037,36 @@ void handle (const sf::Event::KeyReleased& key, State& state)
 
     default:
         return;
+    }
+}
+
+void handle (const sf::Event::MouseMoved& mouse, State& state)
+{
+
+    if (!state.pause) return;
+
+    sf::Vector2f mousePos = sf::Vector2f(mouse.position);
+
+    if (state.menu.button.getGlobalBounds().contains(mousePos)) {
+        state.menu.button.setFillColor(sf::Color(100, 100, 100));
+    } else {
+        state.menu.button.setFillColor(sf::Color(50, 50, 50));
+    }
+}
+
+void handle (const sf::Event::MouseButtonPressed& mouse, State& state)
+{
+    if (!state.pause) return;
+
+    if (mouse.button == sf::Mouse::Button::Left) {
+        sf::Vector2f mousePos = sf::Vector2f(mouse.position);
+
+        if (state.menu.button.getGlobalBounds().contains(mousePos)) {
+            if (state.game_over) {
+                state.game_over = false;
+            }
+            state.pause = false;
+        }
     }
 }
 
