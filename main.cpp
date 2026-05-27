@@ -12,7 +12,7 @@
 //////////////////////
 
 // window
-const char* window_title = "Tappa-07";
+const char* window_title = "Tappa-08";
 const unsigned window_width = 1200;
 const unsigned window_height = 680;
 const float max_frame_rate = 60;
@@ -39,47 +39,6 @@ struct Room{
 
     Room ();
     void draw (sf::RenderWindow& window);
-};
-
-struct Player{
-    sf::Vector2f pos;
-    sf::Vector2f size;
-    sf::Texture lastTexture;
-    sf::Texture textureFront;
-    sf::Texture textureBack;
-    sf::Texture textureLeft;
-    sf::Texture textureRight;
-    float speed;
-
-    Player ();
-    void draw (sf::RenderWindow& window);
-    void setDirection (int direction);
-    void move_player_left (float elapsed);
-    void move_player_right (float elapsed);
-    void move_player_up (float elapsed);
-    void move_player_down (float elapsed);
-};
-
-struct Bullet{
-    sf::Vector2f pos;
-    sf::Vector2f size;
-    sf::Texture texture;
-    int direction;
-    float speed;
-    bool inAction;
-
-    Bullet (int direction, sf::Vector2f posPlayer);
-    void draw (sf::RenderWindow& window);
-    void move_bullet (float elapsed);
-};
-
-struct Attack{
-    std::vector<Bullet> bullets;
-
-    Attack (){};
-    void draw (sf::RenderWindow& window);
-    void attack (int direction, sf::Vector2f posPlayer);
-    void update (float elapsed);
 };
 
 struct Life{
@@ -117,17 +76,65 @@ struct Hub{
     void draw (sf::RenderWindow& window);
 };
 
+struct Player{
+    sf::Vector2f pos;
+    sf::Vector2f size;
+    sf::Texture lastTexture;
+    sf::Texture textureFront;
+    sf::Texture textureBack;
+    sf::Texture textureLeft;
+    sf::Texture textureRight;
+    float speed;
+
+    Player ();
+    void draw (sf::RenderWindow& window);
+    void setDirection (int direction);
+    void move_player_left (float elapsed);
+    void move_player_right (float elapsed);
+    void move_player_up (float elapsed);
+    void move_player_down (float elapsed);
+};
+
 struct Enemy{
     sf::RectangleShape shape;
     sf::Vector2f pos;
     sf::Vector2f size;
     sf::Texture textureSpider;
     float speed;
+    bool hitted;
 
     Enemy ();
     void draw (sf::RenderWindow& window);
     sf::Vector2f randomSpawnPoint ();
     void move (float elapsed, Player& player);
+
+    void hit(){ hitted = true; };
+};
+
+struct Bullet{
+    sf::RectangleShape shape;
+    sf::Vector2f pos;
+    sf::Vector2f size;
+    sf::Texture texture;
+    int direction;
+    float speed;
+    bool inAction;
+
+    Bullet (int direction, sf::Vector2f posPlayer);
+    void draw (sf::RenderWindow& window);
+    void move_bullet (float elapsed);
+    bool hit (Enemy& enemy);
+};
+
+struct Attack{
+    std::vector<Bullet> bullets;
+
+    Attack (){};
+    void draw (sf::RenderWindow& window);
+    void attack (int direction, sf::Vector2f posPlayer);
+    void update (float elapsed);
+    void hit (Enemy& enemy);
+    void collision (Hub Hub);
 };
 
 struct State{
@@ -198,29 +205,41 @@ Player::Player ()
     float player_px = ((float) window_width / 2.0) - (size.x / 2.0);
     float player_py = ((float) window_height/2.0) - size.y;
     pos = {player_px, player_py};
-    
+
     speed = player_speed;
 }
 
-Bullet::Bullet (int direction, sf::Vector2f posPlayer)
-{
+Bullet::Bullet (int direction, sf::Vector2f playerCenter) : shape(size){
     this->direction = direction;
-    
     inAction = true;
-    texture = sf::Texture ("texture/bullet/bullet.png");
+    
+    texture = sf::Texture ("texture/bullet/bulletUpdated.png");
     size = (sf::Vector2f)texture.getSize();
+
+    shape.setTexture(&texture);
+    pos = {playerCenter.x, playerCenter.y};
     if(direction == 0){
-        pos = {posPlayer.x, posPlayer.y + (size.y)};
+        shape.setScale({-1.f,1.f});
+        shape.setOrigin({0.f, size.y/2.f});
     }
     else if(direction == 1){
-        pos = {posPlayer.x, posPlayer.y - (size.y/2.f)};
+        shape.setOrigin({0.f,size.y/2.f});
     }
     else if(direction == 2){
-        pos = {posPlayer.x - (size.x/2.f), posPlayer.y};
+        shape.rotate(sf::degrees(90.f));
+        shape.setScale({-1.f,1.f});
+        shape.setOrigin({0.f, size.y/2.f});
+        
     }
     else if(direction == 3){
-        pos = {posPlayer.x + (size.x), posPlayer.y};
+        shape.rotate(sf::degrees(90.f));
+        shape.setScale({1.f,1.f});
+        shape.setOrigin({0.f, size.y/2.f});
     }
+
+    shape.setSize(size);
+    shape.setPosition(pos);
+
     speed = bullet_speed;
 }
 
@@ -249,6 +268,7 @@ Hub::Hub () : sprite(texture){
 }
 
 Enemy::Enemy () : shape(size){
+    hitted = false;
     textureSpider = sf::Texture ("texture/enemy/spider.png");
     size = {textureSpider.getSize().x * 1.5f, textureSpider.getSize().y * 1.5f};
     pos = randomSpawnPoint();
@@ -281,28 +301,11 @@ void Player::draw (sf::RenderWindow& window){
 }
 
 void Bullet::draw (sf::RenderWindow& window){
-    if(!inAction){
-        return;
+    if(inAction){
+        shape.setTexture(&texture);
+        shape.setPosition(pos);
+        window.draw(shape);
     }
-
-    sf::RectangleShape bullet (size);
-    bullet.setTexture(&texture);
-    bullet.setPosition(pos);
-    
-    if(direction == 0){
-        bullet.setRotation(sf::Angle(sf::degrees(-135.f)));
-    }
-    else if(direction == 1){
-        bullet.setRotation(sf::Angle(sf::degrees(45.f)));
-    }
-    else if(direction == 2){
-        bullet.setRotation(sf::Angle(sf::degrees(-45.f)));
-    }
-    else if(direction == 3){
-        bullet.setRotation(sf::Angle(sf::degrees(135.f)));
-    }
-    
-    window.draw(bullet);
 }
 
 void Attack::draw (sf::RenderWindow& window){
@@ -329,18 +332,20 @@ void Round::draw (sf::RenderWindow& window){
 }
 
 void Enemy::draw (sf::RenderWindow& window){
-    shape.setPosition(pos);
-    window.draw(shape);
+    if(!hitted){
+        shape.setPosition(pos);
+        window.draw(shape);
+    }
 }
 
 void State::draw (sf::RenderWindow& window){
     room.draw(window);
-    hub.draw(window);
     if(!pause){
         attack.draw(window);
     }
     player.draw(window);
     enemy.draw(window);
+    hub.draw(window);
 }
 
 
@@ -385,15 +390,58 @@ void Bullet::move_bullet (float elapsed){
     }
 }
 
+bool Bullet::hit (Enemy& enemy) {
+    if (inAction && !enemy.hitted) {
+        sf::FloatRect bulletBounds = this->shape.getGlobalBounds();
+        sf::FloatRect enemyBounds = enemy.shape.getGlobalBounds();
+
+        if (bulletBounds.findIntersection(enemyBounds)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void Attack::attack (int direction, sf::Vector2f posPlayer){
     bullets.push_back(Bullet(direction, posPlayer));
 }
 
 void Attack::update (float elapsed){
     for(auto& bullet : bullets){
-        bullet.move_bullet(elapsed);
+        if(bullet.inAction){
+            bullet.move_bullet(elapsed);
+        }
     }
-    
+}
+
+void Attack::hit (Enemy& enemy){
+    for(auto& bullet : bullets){
+        if(bullet.inAction){
+            if(bullet.hit(enemy)){
+                bullet.inAction = false;
+                enemy.hit();
+            }
+        }
+    }
+}
+
+void Attack::collision (Hub hub){
+    for(auto & bullet : bullets){
+        if(bullet.inAction){
+            if(bullet.pos.x + bullet.size.x < 0.f){
+                bullet.inAction = false;
+            }
+            if(bullet.pos.y + bullet.size.y < hub.size.y){
+                bullet.inAction = false;
+            }
+            if(bullet.pos.x > window_width){
+                bullet.inAction = false;
+            }
+            if(bullet.pos.y > window_height){
+                bullet.inAction = false;
+            }
+        }
+    }
 }
 
 sf::Vector2f Enemy::randomSpawnPoint (){
@@ -445,7 +493,6 @@ void Enemy::move (float elapsed, Player& player){
             pos.y -= movement;
         }
     }
-    
 }
 
 void State::collision (){
@@ -461,6 +508,9 @@ void State::collision (){
     if(player.pos.y + player.size.y > window_height){
         player.pos.y = window_height - player.size.y;
     }
+
+    attack.hit(enemy);
+    attack.collision(hub);
 }
 
 void State::update (float elapsed){
@@ -498,7 +548,8 @@ void State::update (float elapsed){
         
         attack.update(elapsed);
 
-        enemy.move(elapsed, player);
+        // test se funziona da fermo
+        //enemy.move(elapsed, player);
 
         collision();
     }
@@ -572,6 +623,11 @@ void handle (const sf::Event::KeyPressed& key, State& state)
         }
         return;
     
+    // test
+    case sf::Keyboard::Scan::C:
+        state.enemy.hit();
+        return;
+
     default:
         return;
     }
