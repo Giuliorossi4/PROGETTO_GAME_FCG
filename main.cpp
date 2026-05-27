@@ -1,5 +1,5 @@
 #include <SFML/Graphics.hpp>
-
+#include <iostream>
 
 
 //////////////////////
@@ -7,12 +7,40 @@
 //////////////////////
 
 // window
-const char* window_title = "Tappa-01";
+const char* window_title = "Tappa-02";
 const unsigned window_width = 1200;
 const unsigned window_height = 680;
 const float max_frame_rate = 60;
 
+struct Room{
+    sf::Texture texture;
+    sf::Sprite sprite;
 
+    Room ();
+    void draw (sf::RenderWindow& window);
+};
+
+struct State{
+    Room room;
+
+    State() : room() {}
+    void draw (sf::RenderWindow& window);
+};
+
+Room::Room() : sprite(texture){
+    texture = sf::Texture("texture/floor/floorBlock01.png");
+    texture.setRepeated(true);
+    sprite = sf::Sprite(texture);
+    sprite.setTextureRect(sf::IntRect({0, 0}, {static_cast<int>(window_width), static_cast<int>(window_height)}));
+}
+
+void Room::draw (sf::RenderWindow& window){
+    window.draw(sprite);
+}
+
+void State::draw (sf::RenderWindow& window){
+    room.draw(window);
+}
 
 ////////////
 // Events //
@@ -41,6 +69,8 @@ int main()
     window.setFramerateLimit (max_frame_rate);
     window.setMinimumSize(window.getSize());
 
+    State state;
+
     sf::VideoMode desktop = sf::VideoMode::getDesktopMode();
     window.setPosition({
         static_cast<int>((desktop.size.x - window.getSize().x) / 2),
@@ -57,6 +87,7 @@ int main()
 
         // display
         window.clear (sf::Color::Black);
+        state.draw(window);
         window.display ();
     }
 }
