@@ -15,7 +15,7 @@
 const sf::Font font{"resources/font/LowresPixel-Regular.otf"};
 
 // window
-const char* window_title = "Tappa-12";
+const char* window_title = "Tappa-13";
 const unsigned window_width = 1200;
 const unsigned window_height = 680;
 const float max_frame_rate = 60;
@@ -35,11 +35,19 @@ const float bullet_speed = 600;
 
 // Life
 const sf::Vector2f edge = {10.f, 10.f};
-const int numLife = 3;
+const int startLife = 3;
+int totalLife = 3;
+const int healRound = 5;
+const int BossRound = 10;
 
 // Enemy
 const float enemy_speed = 100;
 const int numEnemy = 10;
+const float emenySpawnTimer = 0.5f;
+const sf::Texture& textureSpider = sf::Texture("texture/enemy/spider.png");
+const sf::Texture& textureSnake = sf::Texture("texture/enemy/snake.png");
+const sf::Texture& bossTexture = sf::Texture("texture/enemy/Boss.png");
+const int bossWave = 5;
 
 struct Room{
     sf::Texture texture;
@@ -73,7 +81,7 @@ struct Life{
     Life ();
     void draw (sf::RenderWindow& window);
 
-    void reset ();
+    void reset (bool nextRound);
 };
 
 struct Round{
@@ -134,7 +142,7 @@ struct Enemy{
     float waitTimer;
     float WAIT_DURATION;
 
-    Enemy (float speed, int life, sf::Vector2f posSpawn, sf::Texture& textureSelect);
+    Enemy (float speed, int life, sf::Vector2f posSpawn, const sf::Texture& textureSelect);
     void draw (sf::RenderWindow& window);
     bool move (float elapsed, Player& player);
     void hit (){ enemylife --; };
@@ -173,23 +181,23 @@ struct Attack{
 
 struct Wave {
     std::vector<Enemy> enemies;
-    sf::Texture textureSpider;
-    sf::Texture textureSnake;
     float spawnTimer;
     int totalEnemy;
     int enemyAlive;
     int spawnedCount;
     float speed;
+    bool bossFight;
+    int bossSpawnIndex;
 
     Wave ();
     void draw (sf::RenderWindow& window);
-    void collision (Hub hub);
-    sf::Texture& randomTexture ();
-    sf::Vector2f randomSpawnPoint (sf::Texture texture);
+    void collision (Hub hub, Player player);
+    const sf::Texture& randomTexture ();
+    sf::Vector2f randomSpawnPoint (const sf::Texture& texture);
     void cleanUp ();
     void update (float elapsed);
 
-    void reset (int numRound);
+    void reset (int numRound, bool isBossFight);
 };
 
 struct State{
@@ -333,7 +341,7 @@ Bullet::Bullet (Direction direction, sf::Vector2f playerCenter) : shape(size){
 }
 
 Life::Life (){
-    life = numLife;
+    life = startLife;
     texture = sf::Texture("texture/life/heart.png");
     texture2 = sf::Texture("texture/life/heart2.png");
     pos = edge;
@@ -360,7 +368,7 @@ Hub::Hub () : shape(size){
     size.y += outLine;
 }
 
-Enemy::Enemy (float speed, int life, sf::Vector2f posSpawn, sf::Texture& textureSelect) : shape(size){
+Enemy::Enemy (float speed, int life, sf::Vector2f posSpawn, const sf::Texture& textureSelect) : shape(size){
     enemylife = life;
     isWaiting = false;
     waitTimer = 0.f;
@@ -380,14 +388,13 @@ Enemy::Enemy (float speed, int life, sf::Vector2f posSpawn, sf::Texture& texture
 }
 
 Wave::Wave (){
-    textureSnake = sf::Texture("texture/enemy/snake.png");
-    textureSpider = sf::Texture("texture/enemy/spider.png");
     enemyAlive = numEnemy;
     spawnedCount = 0;
     totalEnemy = numEnemy;
     spawnTimer = 0.f;
     enemies.reserve(enemyAlive); 
     speed = enemy_speed;
+    bossFight = false;
 }
 
 //////////
@@ -442,7 +449,7 @@ void Life::draw (sf::RenderWindow& window){
         posHeart.x += texture.getSize().x + (edge.x / 2.f);
     }
     sprite.setTexture(texture2);
-    for(int i = life; i < numLife; i++){
+    for(int i = life; i < totalLife; i++){
         sprite.setPosition(posHeart);
         window.draw(sprite);
         posHeart.x += texture.getSize().x + (edge.x / 2.f);
@@ -451,7 +458,12 @@ void Life::draw (sf::RenderWindow& window){
 
 void Round::draw (sf::RenderWindow& window){
     sf::Text finalText = text;
-    finalText.setString(text.getString() + "\t" + std::to_string(num));
+    if(num % BossRound == 0){
+        finalText.setString("BOSS FIGHT");
+        finalText.setFillColor(sf::Color::Red);
+    }
+    else
+        finalText.setString(text.getString() + "\t" + std::to_string(num));
     window.draw(finalText);
 }
 
@@ -488,6 +500,19 @@ void State::draw (sf::RenderWindow& window){
 // Update //
 ////////////
 
+// Calcolo hitbox
+sf::FloatRect getCustomHitbox(const sf::RectangleShape& shape) {
+    sf::FloatRect bounds = shape.getGlobalBounds();
+
+    float marginX = 40.f;
+    float marginY = 58.f;
+
+    return sf::FloatRect(
+        {bounds.position.x + marginX, bounds.position.y + marginY},
+        {bounds.size.x - (marginX), bounds.size.y - (marginY)}
+    );
+}
+
 void Menu::update (bool isGameOver) {
     if (!isGameOver) {
         titleText.setString("DUNGEON CLEANSER");
@@ -508,8 +533,15 @@ void Menu::update (bool isGameOver) {
     ));
 }
 
-void Life::reset (){
-    life = numLife;
+void Life::reset (bool nextRound){
+    if(nextRound){
+        life = totalLife;
+    }
+    else{
+        life = startLife;
+        totalLife = startLife;
+    }
+    
 }
 
 void Hub::nextRound (){
@@ -566,9 +598,13 @@ void Bullet::move_bullet (float elapsed){
 
 bool Bullet::hit (Enemy& enemy) {
     sf::FloatRect bulletBounds = this->shape.getGlobalBounds();
-    sf::FloatRect enemyBounds = enemy.shape.getGlobalBounds();
+    sf::FloatRect enemyHitbox;
+    if(shape.getTexture()->getSize() == bossTexture.getSize())
+        enemyHitbox = getCustomHitbox(enemy.shape);
+    else
+        enemyHitbox = enemy.shape.getGlobalBounds();
 
-    if (bulletBounds.findIntersection(enemyBounds)) {
+    if (bulletBounds.findIntersection(enemyHitbox)) {
         return true;
     }
     return false;
@@ -666,13 +702,16 @@ bool Enemy::move (float elapsed, Player& player){
             pos.y -= movement;
         }
     }
-
-    sf::FloatRect bulletBounds = shape.getGlobalBounds();
+    sf::FloatRect enemyHitbox;
+    if(shape.getTexture()->getSize() == bossTexture.getSize())
+        enemyHitbox = getCustomHitbox(shape);
+    else
+        enemyHitbox = shape.getGlobalBounds();
     sf::RectangleShape playerShape(player.size);
     playerShape.setPosition(player.pos);
-    sf::FloatRect enemyBounds = playerShape.getGlobalBounds();
+    sf::FloatRect playerBounds = playerShape.getGlobalBounds();
 
-    if (bulletBounds.findIntersection(enemyBounds)) {
+    if (enemyHitbox.findIntersection(playerBounds)) {
         player.hitted();
         return true;
     }
@@ -680,24 +719,24 @@ bool Enemy::move (float elapsed, Player& player){
     return false;
 }
 
-sf::Vector2f Wave::randomSpawnPoint (sf::Texture texture){
+sf::Vector2f Wave::randomSpawnPoint (const sf::Texture& texture){
     std::random_device rd;
     std::mt19937 gen(rd());
 
-    std::uniform_int_distribution<> distr(1, 2);
+    std::uniform_int_distribution<> distr(1, 100);
     float X = 0.f;
     float Y = 0.f;
-    if(distr(gen) == 2){
-        std::uniform_int_distribution<> distrX(0.f, window_width - texture.getSize().x);
+    if(distr(gen) % 2 == 0){
+        std::uniform_int_distribution<> distrX(0.f - texture.getSize().x, window_width);
         X = distrX(gen);
-        if(X == 0.f  || X == window_width  - (texture.getSize().x)){
-            std::uniform_real_distribution<> distrY(roomPos.y, window_height - texture.getSize().y);
+        if(X == 0.f - (texture.getSize().x) || X == window_width){
+            std::uniform_real_distribution<> distrY(roomPos.y - texture.getSize().y, window_height);
             Y = distrY(gen);
         }
         else{
-            std::uniform_real_distribution<> distrY(1,2);
-            if(distrY(gen) == 1){
-                Y = roomPos.y - texture.getSize().y;
+            std::uniform_int_distribution<> distrY(1, 100);
+            if(distrY(gen) % 2 == 0){
+                Y = roomPos.y   - texture.getSize().y;
             }
             else{
                 Y = window_height;
@@ -705,20 +744,19 @@ sf::Vector2f Wave::randomSpawnPoint (sf::Texture texture){
         }
     }
     else{
-        
-        std::uniform_real_distribution<> distrY(roomPos.y, window_height - texture.getSize().y);
+        std::uniform_real_distribution<> distrY(roomPos.y - texture.getSize().y, window_height);
         Y = distrY(gen);
-        if(Y == roomPos.y || Y == window_height - texture.getSize().y){
-            std::uniform_int_distribution<> distrX(0.f, window_width - texture.getSize().x);
+        if(Y == roomPos.y - texture.getSize().y || Y == window_height){
+            std::uniform_int_distribution<> distrX(0.f - texture.getSize().x, window_width);
             X = distrX(gen);
         }
         else{
-            std::uniform_real_distribution<> distrX(1,2);
-            if(distrX(gen) == 1){
-                X = 0.f;
+            std::uniform_int_distribution<> distrX(1, 100);
+            if(distrX(gen) % 2 == 0){
+                X = 0.f  - texture.getSize().x;
             }
             else{
-                X = window_width - texture.getSize().x;
+                X = window_width;
             }
         }
     }
@@ -726,11 +764,16 @@ sf::Vector2f Wave::randomSpawnPoint (sf::Texture texture){
     return {X,Y};
 }
 
-sf::Texture& Wave::randomTexture (){
+const sf::Texture& Wave::randomTexture (){
     std::random_device rd;
     std::mt19937 gen(rd());
+    
+    if(bossFight && bossSpawnIndex == spawnedCount){
+        bossFight = false;
+        return bossTexture;
+    }
 
-    std::uniform_int_distribution<> distr (1,3);
+    std::uniform_int_distribution<> distr (1,2);
     
     if(distr(gen) % 2 != 0){
         return textureSpider;
@@ -743,8 +786,9 @@ sf::Texture& Wave::randomTexture (){
 void Wave::update (float elapsed) {
     spawnTimer += elapsed;
     if (spawnedCount < totalEnemy) {
-        if (spawnTimer >= 1.0f) {
-            sf::Texture& newEmenyTexture = randomTexture();
+
+        if (spawnTimer >= emenySpawnTimer) {
+            const sf::Texture& newEmenyTexture = randomTexture();
             sf::RectangleShape newEnemy((sf::Vector2f)newEmenyTexture.getSize());
             sf::Vector2f newEmenyPos = randomSpawnPoint(newEmenyTexture);
             newEnemy.setPosition(newEmenyPos);
@@ -759,12 +803,14 @@ void Wave::update (float elapsed) {
                     break;
                 }
             }
-            
             if(!conflict){
                 if(newEmenyTexture.getSize() == textureSpider.getSize())
                     enemies.emplace_back(speed, 2, newEmenyPos, newEmenyTexture);
-                else
+                else if(newEmenyTexture.getSize() == textureSnake.getSize())
                     enemies.emplace_back(speed * 1.5f, 1, newEmenyPos, newEmenyTexture);
+                else
+                    enemies.emplace_back(100, 40, newEmenyPos, newEmenyTexture);
+                
                 spawnedCount++;
                 spawnTimer = 0.f;
             }
@@ -772,7 +818,7 @@ void Wave::update (float elapsed) {
     }
 }
 
-void Wave::collision (Hub hub) {
+void Wave::collision (Hub hub, Player player) {
     for (size_t i = 0; i < enemies.size(); ++i) {
 
         for (size_t j = 0; j < enemies.size(); ++j) {
@@ -801,20 +847,30 @@ void Wave::collision (Hub hub) {
                 }
             }
         }
-    }
 
-    for(auto & enemy : enemies){
-        if(enemy.pos.x < 0.f){
-            enemy.pos.x = 0.f;
+        sf::Vector2f distance = {(enemies[i].pos.x + (enemies[i].size.x / 2.f)) - (player.pos.x + (player.size.x / 2.f)),
+                                 (enemies[i].pos.y + (enemies[i].size.y / 2.f)) - (player.pos.y + (player.size.y / 2.f))};
+        
+        if(distance.x > 0){
+            if(enemies[i].pos.x <= 0.f){
+                enemies[i].pos.x = 0.f;
+            }
         }
-        if(enemy.pos.y < hub.size.y){
-            enemy.pos.y = hub.size.y;
+        else if(distance.x < 0){
+            if(enemies[i].pos.x >= window_width - enemies[i].size.x){
+                enemies[i].pos.x = window_width - enemies[i].size.x;
+            }
         }
-        if(enemy.pos.x + enemy.size.x > window_width){
-            enemy.pos.x = window_width - enemy.size.x;
+
+        if(distance.y > 0){
+            if(enemies[i].pos.y <= hub.size.y){
+                enemies[i].pos.y = hub.size.y;
+            }
         }
-        if(enemy.pos.y + enemy.size.y > window_height){
-            enemy.pos.y = window_height - enemy.size.y;
+        else if(distance.y < 0){
+            if(enemies[i].pos.y >= window_height - enemies[i].size.y){
+                enemies[i].pos.y = window_height - enemies[i].size.y;
+            }
         }
     }
 }
@@ -829,9 +885,14 @@ void Wave::cleanUp() {
     }
 }
 
-void Wave::reset (int numRound){
+void Wave::reset (int numRound, bool isBossFight){
     enemies.clear();
-    enemyAlive = numEnemy + (1 * numRound);;
+    if(isBossFight){
+        bossFight = true;
+        enemyAlive = bossWave + (1 * (numRound/10));
+    }
+    else
+        enemyAlive = numEnemy + (1 * numRound);
     spawnedCount = 0;
     totalEnemy = enemyAlive;
     spawnTimer = 0.f;
@@ -857,7 +918,7 @@ void State::collision (){
         attack.hit(enemy);
     }
     attack.collision(hub);
-    wave.collision(hub);
+    wave.collision(hub, player);
 
     attack.cleanUp();
     wave.cleanUp();
@@ -866,14 +927,29 @@ void State::collision (){
 void State::restart (bool nextRound)
 {
     if(nextRound){
-        player.reset(hub.round.num);
-        wave.reset(hub.round.num);
         hub.nextRound();
+        player.reset(hub.round.num);
+        bool isBossFight = false;
+        if(hub.round.num % healRound == 0){
+            totalLife ++;
+            hub.life.reset(nextRound);
+            if(hub.round.num % BossRound == 0){
+                isBossFight = true;
+            }
+        }
+        wave.reset(hub.round.num, isBossFight);
+        if(isBossFight){
+            std::random_device rd;
+            std::mt19937 gen(rd());
+            std::uniform_int_distribution<> distr(0, wave.totalEnemy - 1);
+            
+            wave.bossSpawnIndex = distr(gen);
+        }
     }
     else{
         player.reset(0);
-        hub.life.reset();
-        wave.reset(0);
+        hub.life.reset(nextRound);
+        wave.reset(0, false);
         hub.round.num = 1;
         game_over = true;
     }
