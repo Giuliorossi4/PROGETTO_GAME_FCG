@@ -1,11 +1,15 @@
 Compilation:
 ```
-cmake -B build -D CMAKE_BUILD_TYPE=Release
-cmake --build build
+chmod +x stages.sh
+./stages.sh all
 
 ```
 Execution:
+
+(Inserire al posto di "**" il numero della tappa da visionare)
+
 ```
+cd FCG_Stages/Tappa-**
 ./build/DungeonCleanser
 
 ```
@@ -13,7 +17,7 @@ Struttura del Progetto e Tappe (Git Tags)
 
 Il progetto non utilizza cartelle separate per le varie fasi di sviluppo, ma è versionato interamente tramite Git Tags. Ogni tappa è compilabile ed eseguibile.
 
-Per visionare e testare una specifica tappa del progetto, apri il terminale nella root del progetto e digita uno dei seguenti comandi per la specifica tappa:
+Per visionare una specifica tappa del progetto, apri il terminale nella root del progetto e digita uno dei seguenti comandi per la specifica tappa:
 
 git checkout Tappa-01--Finestra-Vuota
 git checkout Tappa-02
@@ -30,11 +34,10 @@ git checkout Tappa-12
 git checkout Tappa-13
 
 
-```
 Comandi:
 
 Dalla versione 00 alla versione 10:
-```
+
 Enter = avvio del gioco e pausa;
 
 W = muovi il player verso l'alto;
@@ -44,19 +47,19 @@ D = muovi il player verso destra;
 
 Freccia su = spara un pugnale che nasce dal player e va verso l'alto;
 Freccia sinistra = spara un pugnale che nasce dal player e va verso sinistra;
-Freaccia giu' = spara un pugnale che nasce dal player e va verso il basso;
+Freccia giu' = spara un pugnale che nasce dal player e va verso il basso;
 Freccia destra = spara un pugnale che nasce dal player e va verso destra;
 
-```
+
 
 Dalla versione 11 alla versione finale:
-```
+
 Per avviare o mettere in pausa il gioco si puo' usare anche il tasto SPACE;
 
-```
+
 
 GAMEPLAY:
-```
+
 L'obbiettivo del gioco e' eliminare i nemici per andare avanti nei livelli,
 per farlo bisogna sparargli e colpirli con i pugnali.
 Ci sono due tipi di nemici, i ragni e i serpenti.
@@ -66,5 +69,3 @@ Avanzando nei round il numero dei nemici aumenta, insieme anche alla loro veloci
 Ogni volta che carica il nuovo round bisogna premere il tasto per avviare il gioco per iniziare il nuovo round,
 cosi' per dare il tempo al giocatore per ambientarsi.
 Ogni 5 round la vita del giocatore si ripristinera' e aumentera' con una vita extra, invece ogni 10 round ci sara' una boss fight con delle orde speciali, con meno nemici del solito, ma con un boss molto lento, grande e con molta vita, serviranno 40 colpi per abbatterlo.
-
-```
